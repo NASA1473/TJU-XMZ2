@@ -1,2 +1,2 @@
 # TJU-XMZ2
-This is for TJU XMZ2 learning.
+This is the mit-6.828 project.And it is for TJU Booth learning.
