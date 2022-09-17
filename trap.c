@@ -13,6 +13,7 @@ struct gatedesc idt[256];
 extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
+int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
 
 void
 tvinit(void)
@@ -54,6 +55,16 @@ trap(struct trapframe *tf)
       wakeup(&ticks);
       release(&tickslock);
     }
+    if(myproc() && (tf->cs & 3) == 3) {
+      myproc()->alarm_counter++;
+      if(myproc()->alarmticks ==myproc()->alarm_counter){
+        myproc()->alarm_counter = 0;
+        // myproc()->alarmhandler;
+         tf->esp -= 4; 
+        *((uint *)(tf->esp)) = tf->eip;
+        tf->eip =(uint) myproc()->alarmhandler;
+      }
+     }
     lapiceoi();
     break;
   case T_IRQ0 + IRQ_IDE:
@@ -80,6 +91,26 @@ trap(struct trapframe *tf)
 
   //PAGEBREAK: 13
   default:
+    if (tf->trapno == T_PGFLT) {
+      char *mem;
+      uint a;
+      
+      a = PGROUNDDOWN(rcr2());
+      mem = kalloc();
+      if (mem == 0) {
+        cprintf("allocuvm out of memory\n");
+        myproc()->killed = 1;
+        break;
+      }
+      memset(mem, 0, PGSIZE);
+      if(mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+        cprintf("allocuvm out of memory (2)\n");
+        myproc()->killed = 1;
+        kfree(mem);
+        break;
+      }
+      break;
+    }
     if(myproc() == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
       cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
